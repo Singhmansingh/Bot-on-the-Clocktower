@@ -206,24 +206,6 @@ function MoveToDay() {
 
 }
 
-/*
-function PlayMusic() {
-
-	return;
-}
-
-function JoinVC() {
-
-	return;
-}
-
-function LeaveVC() {
-
-	return;
-}
-
-
-*/
 
 client.login(process.env.TOKEN);
 

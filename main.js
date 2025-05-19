@@ -4,6 +4,10 @@ const Discord = require('discord.js');
 const client = new Discord.Client();
 const COTTAGE_MAP = new Map();
 
+const fs = require('fs');
+const path = require('path');
+const QUEUE = [];
+
 const ct = '.c';
 /** @type {Discord.VoiceChannel} */
 let gameChannel;
@@ -14,7 +18,15 @@ let lastMessage;
 let storyTellerRole;
 /** @type {Discord.Role} */
 let playerRole;
-client.on('ready', () => console.log('ready.'));
+LoadMusic();
+
+let dayCount = 1;
+
+client.on('ready', () => {
+	console.log('ready.');
+
+});
+
 
 client.on('message', message => {
 	if(!message.content.startsWith(ct) || message.author.bot) return;
@@ -27,21 +39,34 @@ client.on('message', message => {
 
 	switch(command) {
 	case 'speak':
-		message.channel.send('welcome to Mafia!');
-		break;
+		message.channel.send('Welcome, to **Ravenswood Bluff**.');
+		return;
 	case 'join':
-		try { message.member.voice.channel.join(); }
+		storyTellerRole = GetRole('Storyteller');
+		playerRole = GetRole('Player');
+
+		try { message.member.voice.channel.join();}
 		catch (e) {
 			console.log(e);
 			message.channel.send('you need to be in the voice channel to play.');
 		}
-		break;
+		return;
 	case 'leave':
 		try { message.member.voice.channel.leave(); }
 		catch (e) {
 			message.channel.send('you need to be in the voice channel to play.');
 		}
-		break;
+		return;
+	case 'play':
+		gameChannel = message.channel;
+		PlayMusic(message.guild.voice.channel);
+		return;
+	}
+
+
+	if(!message.member.roles.cache.has(storyTellerRole.id)) return;
+
+	switch(command) {
 	case 'stop':
 	case 'pause':
 		dispatcher.destroy();
@@ -57,10 +82,12 @@ client.on('message', message => {
 	case 'night':
 		MoveToNightPhase();
 		break;
+
 	case 'day':
 		MoveToDay();
 		break;
 	}
+
 
 });
 
@@ -123,7 +150,7 @@ function AssignPlayers(category) {
 		).then(channel => COTTAGE_MAP.set(player, channel.id));
 	});
 }
-
+/** @type {Discord.StreamDispatcher} */
 let dispatcher;
 /** @type {Discord.Collection<string, Discord.GuildMember>} */
 let storytellermap;
@@ -131,7 +158,6 @@ let storytellermap;
 /** @type {Discord.Collection<string, Discord.GuildMember>} */
 let playermap;
 /**
- *
  * @param {Discord.Message} message
  * @returns
  */
@@ -143,32 +169,68 @@ function initGame(message) {
 	 */
 
 	gameChannel = message.guild.voice.channel;
-	storyTellerRole = gameChannel.guild.roles.cache.find(role => role.name === 'Storyteller');
-	if(!storyTellerRole) return message.channel.send('make sure make a role with name `Storyteller`');
+	FetchRoles(message);
+	Reset();
+	MapPlayers();
 
-	playerRole = gameChannel.guild.roles.cache.find(role => role.name === 'Player');
-	if(!playerRole) return message.channel.send('make sure make a role with name `Player`');
-
-	if(gameChannel.members.filter(a => a.roles.cache.has(storyTellerRole.id)).size === 0) return message.channel.send('make sure someone is assigned the `Storyteller` role.');
-
-	PLAYERS = [];
-	if(COTTAGE_MAP)COTTAGE_MAP.clear();
-	if(playermap)playermap.clear();
-	if(storytellermap)storytellermap.clear();
-	// There is a caching issue here. eneds a restart
-	playermap = gameChannel.members.filter(a => a.user.id !== client.user.id && !a.roles.cache.has(storyTellerRole.id));
-	storytellermap = gameChannel.members.filter(a => a.user.id !== client.user.id && a.roles.cache.has(storyTellerRole.id));
 	if(playermap.size == 0) return message.channel.send('Not enough players to play.');
+	if(storytellermap.size == 0) return message.channel.send('make sure someone is assigned the `Storyteller` role.');
 
 	playermap.forEach(player => {
 		player.roles.add(playerRole.id);
 		PLAYERS.push(player);
 	});
 
-	PlayMusic(gameChannel);
 
+	// this was commented out, not sure why
 	BuildCottages();
-	lastMessage.channel.send('**Welcome to Ravenswood Bluff.** all players have been assigned their cottages.');
+
+	// disable the below to block music playing on start 
+	PlayMusic(gameChannel);
+	return OpenMessage();
+
+
+}
+
+function FetchRoles(message) {
+	storyTellerRole = GetRole('Storyteller');
+	if(!storyTellerRole) return message.channel.send('make sure to make a role with name `Storyteller`');
+
+	playerRole = GetRole('Player');
+	if(!playerRole) return message.channel.send('make sure to make a role with name `Player`');
+
+}
+
+// There is a caching issue here. eneds a restart
+function MapPlayers() {
+	const members = gameChannel.members.filter(a => a.user.id !== client.user.id);
+	storytellermap = members.filter(a => a.roles.cache.has(storyTellerRole.id));
+	playermap = members.filter((a, key) => !storytellermap.has(key));
+
+	console.log(playermap);
+
+	playermap.forEach(player => {
+		player.roles.add(playerRole.id);
+	});
+
+	return [storytellermap, playermap];
+}
+
+function GetRole(roleName) {
+	return lastMessage.guild.roles.cache.find(role => role.name === roleName);
+}
+
+function Reset() {
+	PLAYERS = [];
+	dayCount = 1;
+	if(COTTAGE_MAP)		COTTAGE_MAP.clear();
+	if(playermap)		playermap.clear();
+	if(storytellermap)	storytellermap.clear();
+}
+
+function OpenMessage() {
+	lastMessage.channel.send('**Welcome to Ravenswood Bluff.** All **' + playermap.size + '** players have been assigned the Player role and their cottages.');
+
 	let msg;
 	if(storytellermap.size == 1) { msg = 'Your storyteller this evening is: **' + Name(storytellermap.first()) + '**'; }
 	else {
@@ -181,9 +243,7 @@ function initGame(message) {
 		});
 	}
 
-
 	return 	lastMessage.channel.send(msg);
-
 }
 
 function Name(member) {
@@ -191,21 +251,45 @@ function Name(member) {
 	else return member.user.username;
 }
 
+/** @param {Discord.VoiceChannel} channel*/
 function PlayMusic(channel) {
-	channel.join().then(connection => dispatcher = connection.play('./Music/music.mp3', { volume: 0.5 })).catch(err => console.log(err));
+	channel.join().then(connection => {
+		console.log(QUEUE.pop());
+		dispatcher = connection.play('./Music/' + QUEUE.pop(), { volume: 0.5 });
+	}).catch(err => console.log(err));
+
 }
+
 
 function MoveToNightPhase() {
 	if(COTTAGE_MAP) COTTAGE_MAP.forEach((cottageID, player) => { MovePlayer(player, cottageID); });
-	lastMessage.channel.send('<@&' + playerRole.id + '> **Good Night.**');
+	lastMessage.channel.send('<@&' + playerRole.id + '> **Good Night.** Night **' + dayCount + '** commences.');
 	return;
 }
 
-function MoveToDay() {
-	lastMessage.channel.send('<@&' + playerRole.id + '> **The sun rises upon the town.** Return to Town Square.');
+async function MoveToDay() {
+	const message = lastMessage.channel.send('<@&' + playerRole.id + '> **The sun rises upon the town.** Everyone will be returned to the Town square in **3**.');
+	await new Promise(resolve => setTimeout(resolve, 1000)); // 1 sec
+	(await message).edit('<@&' + playerRole.id + '> **The sun rises upon the town.** Everyone will be returned to the Town square in **2**.');
+	await new Promise(resolve => setTimeout(resolve, 1000)); // 1 sec
+	(await message).edit('<@&' + playerRole.id + '> **The sun rises upon the town.** Everyone will be returned to the Town square in **1**.');
+	await new Promise(resolve => setTimeout(resolve, 1000)); // 1 sec
+	if(COTTAGE_MAP) COTTAGE_MAP.forEach((cottageID, player) => {
+		MovePlayer(player, gameChannel.id);
+	});
+	(await message).edit('<@&' + playerRole.id + '> **The sun rises upon the town. Good Morning** Welcome to day **' + dayCount + '**.');
+	dayCount++;
 
 }
 
+function LoadMusic() {
+	const directoryPath = path.join(__dirname, 'Music');
+	fs.readdir(directoryPath, (err, files) => {
+		if(err) return console.log(err);
+		files.forEach((file) => QUEUE.push(file));
+		QUEUE.pop();
+	});
 
+}
 client.login(process.env.TOKEN);
 

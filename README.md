@@ -9,14 +9,19 @@ When everyone has joined the voice channel, run command `init` to create the cot
 
 # Commands
 
+## General
+`.c join` - bot joins current voice channel
+`.c leave` - bot leaves voice channel
+`.c speak` - debug message, outputs to text channel
 ## Game Controls
-`/init` - creates the cottages, starts the music, and messages the channel indicating the game is starting 
-`/night` - moves players to their individual cottage channels
-`/day` - brings players back to the main Voice channel
+`.c init` - creates the cottages, starts the music, and messages the channel indicating the game is starting 
+`.c night` - moves players to their individual cottage channels
+`.c day` - brings players back to the main Voice channel
 
-`/stop` - stops the music player
-`/pause` - pauses the music player
-`/play` - starts the music player
+## Music Player
+`.c stop` - stops the music player
+`.c pause` - pauses the music player
+`.c play` - starts the music player
 
 # Dev Notes
 ## Still need:
